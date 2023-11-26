@@ -1,3 +1,4 @@
+import { Gremlin } from "./Gremlin";
 import { PipeManager } from "./PipeManager";
 import { Query } from "./Query";
 import { Edge, EdgeParam, GraphCore, Vertex } from "./interfaces";
@@ -7,14 +8,12 @@ export class VertexSphere implements GraphCore {
   private vertices: Vertex[];
   private vertexIndexes: { [key: string]: Vertex | null };
   private autoId: number;
-  public pipetypes: PipeManager;
 
-  constructor(v: Vertex[], e: EdgeParam[]) {
+  constructor(v?: Vertex[], e?: EdgeParam[]) {
     this.edges = [];
     this.vertices = [];
     this.vertexIndexes = {};
     this.autoId = 1;
-    this.pipetypes = new PipeManager(this);
 
     if (Array.isArray(v)) this.addVertices(v);
     if (Array.isArray(e)) this.addEdges(e);
@@ -44,7 +43,9 @@ export class VertexSphere implements GraphCore {
     const _edge: Edge = {
       _in: this.findVById(e._in),
       _out: this.findVById(e._out),
-      label: e.label,
+      metadata: {
+        label: e.label,
+      },
     };
 
     if (!_edge._in || !_edge._out)
@@ -58,18 +59,77 @@ export class VertexSphere implements GraphCore {
     this.edges.push(_edge);
   }
 
-  private findVById(id: number) {
+  private findVById(id: string | number) {
     return this.vertexIndexes[id];
   }
 
+  //* query initiator
   public v() {
-    const q = new Query(this);
+    const pipetypes = new PipeManager(this);
+    const q = new Query(this, pipetypes);
     // populate the query with pipetypes
-    this.pipetypes.applyPipetypes(q);
+    // FIXME: now, all of the pipetypes that will be initiated after the bindpiptypes() is called will no be registered
+    // this.pipetypes.bindPipetypes(q);
 
     q.add("vertex", [].slice.call(arguments));
     return q;
   }
 
-  static createGremlin(vertex: Vertex, state: any) {}
+  findVertices(args: any[]): Vertex[] {
+    // three cases: pass empty arg, pass _id obj key or pass string
+
+    if (typeof args[0] == "object") {
+      return this.searchVertices(args[0]);
+    } else if (args.length == 0) {
+      return this.vertices;
+    } else {
+      return this.findVerticesByIds(args);
+    }
+  }
+
+  private findVerticesByIds(ids: (number | string)[]) {
+    return ids.map((id) => this.findVById(id)).filter(Boolean) as Vertex[];
+  }
+
+  private searchVertices(filter: { [key: string]: string | number }) {
+    return this.vertices.filter((v) => this.objectFilter(v.metadata, filter));
+  }
+
+  private objectFilter(
+    t: { [key: string]: string | number },
+    filter: { [key: string]: string | number }
+  ) {
+    for (const key in filter) {
+      if (t[key] !== filter[key]) return false;
+
+      return true;
+    }
+  }
+
+  public findOutEdges(v: Vertex) {
+    return this.edges.filter((e) => e._out?._id == v._id);
+  }
+
+  public findInEdges(v: Vertex) {
+    return this.edges.filter((e) => e._in?._id == v._id);
+  }
+
+  filterEdge(filter: { [key: string]: string | number }): Function {
+    return (edge: Edge) => {
+      if (!filter) return true;
+      if (typeof filter == "string")
+        // string filter: label must match
+        return edge.metadata.label == filter;
+
+      if (Array.isArray(filter))
+        // array filter: must contain label
+        return !!~filter.indexOf(edge.metadata.label);
+
+      return this.objectFilter(edge.metadata, filter);
+    };
+  }
+
+  static createGremlin(vertex: Vertex, state: any) {
+    return new Gremlin(vertex, state || {});
+  }
 }

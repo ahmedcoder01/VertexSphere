@@ -1,5 +1,11 @@
 import { VertexSphere } from "./VertexSphere";
-import { GraphQuery, GraphCore, IGremlin, PipetypeFn } from "./interfaces";
+import {
+  GraphQuery,
+  GraphCore,
+  IGremlin,
+  PipetypeFn,
+  Edge,
+} from "./interfaces";
 
 export class PipeManager {
   private pipetypes: { [key: string]: PipetypeFn };
@@ -32,13 +38,13 @@ export class PipeManager {
   private fauxPipetype(
     graph: any,
     _: any,
-    maybeGremlin?: IGremlin,
+    maybeGremlin?: IGremlin | any,
     state?: any[]
   ) {
     return maybeGremlin || "pull";
   }
 
-  applyPipetypes(query: GraphQuery) {
+  bindPipetypes(query: GraphQuery) {
     this.pipetypesLog.forEach((log) => {
       query[log.name] = () => {
         return query.add(log.name, [].slice.call(arguments));
@@ -57,5 +63,66 @@ export class PipeManager {
       const currV = state.vertices.pop();
       return VertexSphere.createGremlin(currV, gremlin.state);
     });
+
+    this.addPipetype(
+      "in",
+      (
+        graph,
+        args,
+        gremlin,
+        state: {
+          gremlin?: IGremlin;
+          edges?: Edge[];
+        }
+      ) => {
+        if (!gremlin && (!state.edges || !state.edges?.length)) {
+          return "pull";
+        }
+
+        if (!state.edges || !state.edges.length) {
+          state.edges = this.graph
+            .findInEdges(gremlin.v!)
+            .filter((e) => this.graph.filterEdge(e.metadata, args[0]));
+        }
+
+        if (!state?.edges?.length) return "pull";
+
+        const currV = state.edges.pop()?._in!;
+
+        return VertexSphere.createGremlin(currV, gremlin.state);
+      }
+    );
+
+    this.addPipetype(
+      "out",
+      (
+        graph,
+        args,
+        gremlin,
+        state: {
+          gremlin?: IGremlin;
+          edges?: Edge[];
+        }
+      ) => {
+        if (!gremlin && (!state.edges || !state.edges?.length)) {
+          return "pull";
+        }
+
+        if (!state.edges || !state.edges.length) {
+          state.gremlin = gremlin;
+
+          // find edges and filter by passed args
+          state.edges = this.graph
+            .findOutEdges(gremlin.v!)
+            .filter((e) => this.graph.filterEdge(e.metadata, args[0]));
+        }
+
+        if (!state?.edges?.length) return "pull";
+
+        const currV = state.edges.pop()?._out!;
+
+        return VertexSphere.createGremlin(currV, gremlin.state);
+      }
+    );
   }
 }

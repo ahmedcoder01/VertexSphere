@@ -1,7 +1,8 @@
 export interface Edge {
   _in: Vertex | null;
   _out: Vertex | null;
-  label: string;
+
+  metadata: { label: string; [key: string]: any };
 }
 
 export interface EdgeParam {
@@ -11,10 +12,11 @@ export interface EdgeParam {
 }
 
 export interface Vertex {
-  _id?: number;
+  _id?: number | string;
   _in: Edge[];
   _out: Edge[];
-  name: string;
+
+  metadata: { [key: string]: any };
 }
 
 export interface GraphCore {
@@ -23,6 +25,16 @@ export interface GraphCore {
 
   addVertices(vs: Vertex[]): void;
   addEdges(es: EdgeParam[]): void;
+
+  findVertices(args: any[]): Vertex[];
+
+  findInEdges(v: Vertex): Edge[];
+  findOutEdges(v: Vertex): Edge[];
+
+  filterEdge(
+    edgeMetadata: { [key: string]: string | number },
+    filter: { [key: string]: string | number }
+  ): Function;
 }
 
 export interface GraphQuery {
@@ -33,12 +45,14 @@ export interface GraphQuery {
 }
 
 export interface IGremlin {
-  state: any;
+  v?: Vertex;
+  result?: any;
+  state?: any;
 }
 
 export type PipetypeFn = (
   graph: GraphCore,
   args: any[],
-  gremlin: IGremlin,
+  gremlin: IGremlin | any,
   state: any
 ) => any;
