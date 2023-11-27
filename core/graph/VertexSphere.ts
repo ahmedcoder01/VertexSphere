@@ -1,15 +1,17 @@
 import { Gremlin } from "./Gremlin";
-import { PipeManager } from "./PipeManager";
 import { Query } from "./Query";
-import { Edge, EdgeParam, GraphCore, Vertex } from "./interfaces";
+import { Edge, EdgeParam, GraphCore, Vertex } from "../../interfaces";
+import { DiskFlush as DiskStore } from "../persistence/DiskStore";
+import { PersistenceFactory } from "../persistence/PersistenceFactory";
 
 export class VertexSphere implements GraphCore {
   private edges: Edge[];
   private vertices: Vertex[];
   private vertexIndexes: { [key: string]: Vertex | null };
   private autoId: number;
+  private dataStore: DiskStore;
 
-  constructor(v?: Vertex[], e?: EdgeParam[]) {
+  constructor({ v, e, diskLocation }: { v?: Vertex[]; e?: EdgeParam[]; diskLocation: string }) {
     this.edges = [];
     this.vertices = [];
     this.vertexIndexes = {};
@@ -17,6 +19,10 @@ export class VertexSphere implements GraphCore {
 
     if (Array.isArray(v)) this.addVertices(v);
     if (Array.isArray(e)) this.addEdges(e);
+
+    this.dataStore = PersistenceFactory.create(this, diskLocation);
+    this.dataStore.setup();
+    this.dataStore.loadData();
   }
 
   public addEdges(es: EdgeParam[]): void {
@@ -49,9 +55,7 @@ export class VertexSphere implements GraphCore {
     };
 
     if (!_edge._in || !_edge._out)
-      throw new Error(
-        "That edge's " + (_edge._in ? "out" : "in") + " vertex wasn't found"
-      );
+      throw new Error("That edge's " + (_edge._in ? "out" : "in") + " vertex wasn't found");
 
     _edge._in._in.push(_edge);
     _edge._out._out.push(_edge);
@@ -64,9 +68,8 @@ export class VertexSphere implements GraphCore {
   }
 
   //* query initiator
-  public v() {
-    const pipetypes = new PipeManager(this);
-    const q = new Query(this, pipetypes);
+  public v(...args: any[]) {
+    const q = new Query(this);
     // populate the query with pipetypes
     // FIXME: now, all of the pipetypes that will be initiated after the bindpiptypes() is called will no be registered
     // this.pipetypes.bindPipetypes(q);
@@ -95,10 +98,7 @@ export class VertexSphere implements GraphCore {
     return this.vertices.filter((v) => this.objectFilter(v.metadata, filter));
   }
 
-  private objectFilter(
-    t: { [key: string]: string | number },
-    filter: { [key: string]: string | number }
-  ) {
+  private objectFilter(t: { [key: string]: string | number }, filter: { [key: string]: string | number }) {
     for (const key in filter) {
       if (t[key] !== filter[key]) return false;
 
@@ -114,19 +114,41 @@ export class VertexSphere implements GraphCore {
     return this.edges.filter((e) => e._in?._id == v._id);
   }
 
-  filterEdge(filter: { [key: string]: string | number }): Function {
-    return (edge: Edge) => {
-      if (!filter) return true;
-      if (typeof filter == "string")
-        // string filter: label must match
-        return edge.metadata.label == filter;
+  filterEdgeByMetaData(metadata: { [key: string]: string | number }, filter: { [key: string]: string | number }) {
+    if (!filter) return true;
+    if (typeof filter == "string")
+      // string filter: label must match
+      return metadata.label == filter;
 
-      if (Array.isArray(filter))
-        // array filter: must contain label
-        return !!~filter.indexOf(edge.metadata.label);
+    if (Array.isArray(filter))
+      // array filter: must contain label
+      return !!~filter.indexOf(metadata.label);
 
-      return this.objectFilter(edge.metadata, filter);
-    };
+    return this.objectFilter(metadata, filter);
+  }
+
+  getEdges() {
+    return this.edges;
+  }
+
+  getVertices() {
+    return this.vertices;
+  }
+
+  getVertexIndexes() {
+    return this.vertexIndexes;
+  }
+
+  getAutoId() {
+    return this.autoId;
+  }
+
+  setVertexIndexes(vertexIndexes: { [key: string]: Vertex | null }) {
+    this.vertexIndexes = vertexIndexes;
+  }
+
+  setAutoId(autoId: number) {
+    this.autoId = autoId;
   }
 
   static createGremlin(vertex: Vertex, state: any) {

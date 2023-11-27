@@ -1,19 +1,19 @@
 import { PipeManager } from "./PipeManager";
-import { GraphQuery, GraphCore, IGremlin } from "./interfaces";
+import { GraphQuery, GraphCore, IGremlin, PipeOutput } from "../../interfaces";
 
 export class Query implements GraphQuery {
-  public graph: GraphCore;
-  public pipeManager: PipeManager;
-  public state: any[];
-  public program: any[];
-  public gremlins: any[];
+  private graph: GraphCore;
+  private pipeManager: PipeManager;
+  private globalState: any[];
+  private program: any[];
+  private gremlins: any[];
 
-  constructor(graph: GraphCore, pipeManager: PipeManager) {
+  constructor(graph: GraphCore) {
     this.graph = graph;
-    this.state = [];
+    this.globalState = [];
     this.program = [];
     this.gremlins = [];
-    this.pipeManager = pipeManager;
+    this.pipeManager = new PipeManager(this, graph);
   }
 
   add(pipetype: string, args: any[]): this {
@@ -28,19 +28,14 @@ export class Query implements GraphQuery {
     let pc = this.program.length - 1;
     const limit = pc;
     let doneIndex = -1;
-    let maybeGremlin: IGremlin | "done" | "pull" | false = false;
-    const results = [];
+    let maybeGremlin: PipeOutput = false;
+    let results: IGremlin[] = [];
 
     while (doneIndex < limit) {
-      const state = this.state[pc] || {};
+      const state = this.globalState[pc] ? this.globalState[pc] : (this.globalState[pc] = []);
       const programStep = this.program[pc];
       const pipeFn = this.pipeManager.getPipetype(programStep[0]);
-      maybeGremlin = await pipeFn(
-        this.graph,
-        programStep[1],
-        maybeGremlin,
-        state
-      );
+      maybeGremlin = await pipeFn(this.graph, programStep[1], maybeGremlin, state);
 
       if (maybeGremlin == "pull") {
         maybeGremlin = false;
@@ -51,8 +46,6 @@ export class Query implements GraphQuery {
         } else {
           doneIndex = pc;
         }
-
-        continue;
       }
 
       if (maybeGremlin == "done") {
@@ -60,14 +53,22 @@ export class Query implements GraphQuery {
         doneIndex = pc;
       }
 
-      pc++;
+      pc++; // 3 limit: 2
 
       if (pc > limit) {
+        // only push results if we're at the end of the  (last pipe)
+
         // valid result
-        pc--;
         let gremlin = maybeGremlin as IGremlin;
-        results.push(gremlin?.result ? gremlin?.result : gremlin);
+        if (gremlin) results.push(gremlin);
+        maybeGremlin = false;
+        pc--;
       }
     }
+
+    results = results.map((g) => (g?.result ? g.result : g.v));
+    return results;
   }
+
+  // [key: string]: (...args: any[]) => this;
 }

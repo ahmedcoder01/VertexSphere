@@ -1,4 +1,4 @@
-import { IGremlin, Vertex } from "./interfaces";
+import { IGremlin, Vertex } from "../../interfaces";
 
 export class Gremlin implements IGremlin {
   v: Vertex;

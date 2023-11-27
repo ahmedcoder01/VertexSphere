@@ -5,14 +5,17 @@ export interface Edge {
   metadata: { label: string; [key: string]: any };
 }
 
+export type IdType = string | number;
+
+export type PipeOutput = IGremlin | "done" | "pull" | false;
 export interface EdgeParam {
-  _in: number;
-  _out: number;
+  _in: IdType;
+  _out: IdType;
   label: string;
 }
 
 export interface Vertex {
-  _id?: number | string;
+  _id?: IdType;
   _in: Edge[];
   _out: Edge[];
 
@@ -31,17 +34,27 @@ export interface GraphCore {
   findInEdges(v: Vertex): Edge[];
   findOutEdges(v: Vertex): Edge[];
 
-  filterEdge(
+  filterEdgeByMetaData(
     edgeMetadata: { [key: string]: string | number },
     filter: { [key: string]: string | number }
-  ): Function;
+  ): any;
+
+  getEdges(): Edge[];
+  getVertices(): Vertex[];
+  getVertexIndexes(): { [key: string]: Vertex | null };
+  getAutoId(): number;
+
+  setVertexIndexes(vertexIndexes: { [key: string]: Vertex | null }): void;
+
+  setAutoId(autoId: number): void;
 }
 
 export interface GraphQuery {
   // adds a step to the query
   add(pipetype: string, args: any[]): this;
 
-  [key: string]: Function | any;
+  // [key: string]: (...args: any[]) => this;
+  [key: string]: any;
 }
 
 export interface IGremlin {
@@ -50,9 +63,4 @@ export interface IGremlin {
   state?: any;
 }
 
-export type PipetypeFn = (
-  graph: GraphCore,
-  args: any[],
-  gremlin: IGremlin | any,
-  state: any
-) => any;
+export type PipetypeFn = (graph: GraphCore, args: any[], maybeGremlin: PipeOutput, state: any) => PipeOutput;
